@@ -1,1 +1,90 @@
+import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
+# Secure token from environment
+TOKEN = os.getenv("TOKEN")
+
+quiz_data = [
+    {
+        "question": "What is the capital of India?",
+        "options": ["Mumbai", "Delhi", "Chennai", "Kolkata"],
+        "answer": 1
+    },
+    {
+        "question": "Who invented Python?",
+        "options": ["Elon Musk", "Guido van Rossum", "Bill Gates", "Mark Zuckerberg"],
+        "answer": 1
+    },
+    {
+        "question": "Which planet is known as the Red Planet?",
+        "options": ["Earth", "Mars", "Jupiter", "Venus"],
+        "answer": 1
+    }
+]
+
+# Store user data (no database)
+user_data = {}
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data[user_id] = {"score": 0, "q_index": 0}
+    await update.message.reply_text("🎯 Welcome to Quiz Bot!\nType /quiz to start.")
+
+async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data[user_id] = {"score": 0, "q_index": 0}
+    await send_question(context, user_id)
+
+async def send_question(context, user_id):
+    q_index = user_data[user_id]["q_index"]
+
+    if q_index >= len(quiz_data):
+        score = user_data[user_id]["score"]
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"🏁 Quiz Finished!\nYour Score: {score}/{len(quiz_data)}"
+        )
+        return
+
+    question_data = quiz_data[q_index]
+
+    keyboard = [
+        [InlineKeyboardButton(opt, callback_data=str(i))]
+        for i, opt in enumerate(question_data["options"])
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"❓ {question_data['question']}",
+        reply_markup=reply_markup
+    )
+
+async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    selected = int(query.data)
+
+    q_index = user_data[user_id]["q_index"]
+    correct = quiz_data[q_index]["answer"]
+
+    if selected == correct:
+        user_data[user_id]["score"] += 1
+        await query.edit_message_text("✅ Correct!")
+    else:
+        await query.edit_message_text("❌ Wrong!")
+
+    user_data[user_id]["q_index"] += 1
+    await send_question(context, user_id)
+
+app = ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("quiz", quiz))
+app.add_handler(CallbackQueryHandler(handle_answer))
+
+app.run_polling()
